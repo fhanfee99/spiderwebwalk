@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>High-Tech Spider (IK Walking)</title>
+<style>
+  body { margin:0; background:#000; overflow:hidden; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const spider = {
+  x: canvas.width/2,
+  y: canvas.height/2,
+  tx: canvas.width/2,
+  ty: canvas.height/2,
+  speed: 0.01
+};
+
+canvas.addEventListener('click', (e)=>{
+  spider.tx = e.clientX;
+  spider.ty = e.clientY;
+});
+
+// WEB
+const rings = 6;
+const perRing = 30;
+let pts = [];
+
+function buildWeb(){
+  pts = [];
+  for(let r=1;r<=rings;r++){
+    for(let i=0;i<perRing;i++){
+      const a = (i/perRing)*Math.PI*2;
+      const rad = r*60;
+      pts.push({
+        x: canvas.width/2 + Math.cos(a)*rad,
+        y: canvas.height/2 + Math.sin(a)*rad,
+        bx: canvas.width/2 + Math.cos(a)*rad,
+        by: canvas.height/2 + Math.sin(a)*rad
+      });
+    }
+  }
+}
+buildWeb();
+
+function updateSpider(){
+  spider.x += (spider.tx - spider.x)*spider.speed;
+  spider.y += (spider.ty - spider.y)*spider.speed;
+}
+
+// IK LEGS
+let legs = [];
+for(let i=0;i<8;i++){
+  legs.push({
+    angle:(i/8)*Math.PI*2,
+    phase: i%2===0?0:Math.PI,
+    foot:{x:spider.x,y:spider.y},
+    target:{x:spider.x,y:spider.y},
+    lifting:false,
+    liftProgress:0
+  });
+}
+
+function getClosestPoint(x,y){
+  let best=null, min=1e9;
+  pts.forEach(p=>{
+    const d=(p.x-x)**2+(p.y-y)**2;
+    if(d<min){min=d;best=p;}
+  });
+  return best;
+}
+
+function updateLegs(){
+  legs.forEach((leg,i)=>{
+    leg.phase += 0.03;
+
+    // Decide step
+    if(!leg.lifting && Math.sin(leg.phase) > 0.95){
+      leg.lifting = true;
+      leg.liftProgress = 0;
+
+      const tx = spider.x + Math.cos(leg.angle)*80;
+      const ty = spider.y + Math.sin(leg.angle)*80;
+      const p = getClosestPoint(tx,ty);
+      if(p){
+        leg.target.x = p.x;
+        leg.target.y = p.y;
+      }
+    }
+
+    if(leg.lifting){
+      leg.liftProgress += 0.05;
+
+      // arc motion (lift)
+      const t = leg.liftProgress;
+      const liftHeight = Math.sin(t*Math.PI)*20;
+
+      leg.foot.x += (leg.target.x - leg.foot.x)*0.2;
+      leg.foot.y += (leg.target.y - leg.foot.y)*0.2 - liftHeight*0.05;
+
+      if(t>=1){
+        leg.lifting=false;
+      }
+    } else {
+      // hold position 
+      leg.foot.x += (leg.target.x - leg.foot.x)*0.05;
+      leg.foot.y += (leg.target.y - leg.foot.y)*0.05;
+    }
+  });
+}
+
+function drawSpider(){
+  // body 
+  ctx.fillStyle='#444';
+  ctx.beginPath();
+  ctx.ellipse(spider.x, spider.y+4, 5, 9, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // head 
+  ctx.fillStyle='#444';
+  ctx.beginPath();
+  ctx.arc(spider.x, spider.y-6, 3.5, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle='#eee';
+  ctx.lineWidth=0.7;
+
+  legs.forEach(leg=>{
+    const kneeX = spider.x + (leg.foot.x - spider.x)*0.4;
+    const kneeY = spider.y + (leg.foot.y - spider.y)*0.4;
+
+    ctx.beginPath();
+    ctx.moveTo(spider.x, spider.y);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(leg.foot.x, leg.foot.y);
+    ctx.stroke();
+
+    // WEB STICK
+    pts.forEach(p=>{
+      const dx = leg.foot.x - p.x;
+      const dy = leg.foot.y - p.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if(d<18){
+        p.x += dx*0.3;
+        p.y += dy*0.3;
+      }
+    });
+  });
+}
+
+function updateWeb(){
+  pts.forEach(p=>{
+    p.x += (p.bx - p.x)*0.04;
+    p.y += (p.by - p.y)*0.04;
+  });
+}
+
+function drawWeb(){
+  ctx.strokeStyle='rgba(255,255,255,0.35)';
+  ctx.lineWidth=0.5;
+
+  for(let i=0;i<pts.length;i++){
+    const p=pts[i];
+
+    if(i%perRing!==perRing-1){
+      const n=pts[i+1];
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(n.x,n.y); ctx.stroke();
+    }
+
+    if(i+perRing<pts.length){
+      const n=pts[i+perRing];
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(n.x,n.y); ctx.stroke();
+    }
+  }
+}
+
+function loop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  updateSpider();
+  updateLegs();
+  updateWeb();
+  drawWeb();
+  drawSpider();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
